@@ -6,9 +6,10 @@ import random
 import plotly.express as px
 import hashlib
 import os
+import io
 
 # 1. إعدادات الصفحة
-st.set_page_config(page_title="Smart Hassala - سمارت حصالة", layout="wide", page_icon="💰")
+st.set_page_config(page_title="Smart Hassala Pro - سمارت حصالة برو", layout="wide", page_icon="💰")
 
 # --- إدارة قاعدة البيانات ---
 conn = sqlite3.connect('finance_pro.db', check_same_thread=False)
@@ -29,12 +30,12 @@ def make_hashes(password):
 
 def check_hashes(password, hashed_text):
     if make_hashes(password) == hashed_text:
-        return hashlib.sha256(str.encode(password)).hexdigest() == hashed_text
+        return True
     return False
 
 # --- واجهة تسجيل الدخول وإنشاء الحساب ---
 def auth_page():
-    # عرض اللوجو الجديد في المنتصف ليملأ الواجهة
+    # عرض اللوجو الجديد ليملأ الواجهة
     if os.path.exists("logo.jpg"):
         st.image("logo.jpg", use_container_width=True)
     else:
@@ -103,6 +104,7 @@ def main_app(username):
             "history_title": "📜 سجل عملياتك",
             "clear_btn": "🗑️ مسح كل السجل",
             "success_msg": "تم الحفظ! 🎉",
+            "download_ex": "📥 تحميل سجل المصاريف (Excel)",
             "cats": ["طعام 🍔", "تسوق 🛍️", "سكن 🏠", "فواتير 📑", "ترفيه 🎮", "أخرى ✨"],
             "ai_msgs": ["يا بطل، الميزانية بتصوت!", "😱 المصاريف كسبت!", "ارحمني من المصاريف دي شوية! 💸"]
         },
@@ -120,6 +122,7 @@ def main_app(username):
             "history_title": "📜 Transaction History",
             "clear_btn": "🗑️ Clear History",
             "success_msg": "Saved Successfully! 🎉",
+            "download_ex": "📥 Download Excel Report",
             "cats": ["Food 🍔", "Shopping 🛍️", "Bills 📑", "Gaming 🎮", "Others ✨"],
             "ai_msgs": ["Budget is screaming!", "Expenses won 1-0!", "Have mercy on these expenses! 💸"]
         }
@@ -151,20 +154,28 @@ def main_app(username):
     col2.metric(t["total_spent"], f"{total_spent:,.0f}")
     col3.metric(t["remaining"], f"{remaining:,.0f}")
 
-    # عرض الرسم البياني والتحذير الذكي
     if not df.empty:
         st.subheader(t["chart_title"])
+        # رجوع الألوان الملونة (أزرق، أخضر، برتقالي...)
         fig = px.pie(df, values='amount', names='category', hole=0.4)
         st.plotly_chart(fig, use_container_width=True)
         
-        # تحذير الـ AI يظهر إذا زادت المصاريف عن 50% من الدخل
         if total_spent > (income * 0.5):
             st.warning(f"{t['ai_title']}: {random.choice(t['ai_msgs'])}")
 
+        st.markdown("---")
+        st.subheader("📤 " + ("تصدير التقارير" if lang=="العربية" else "Export Reports"))
+        
+        # ميزة تحميل الـ Excel (لرفع السعر!)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Expenses')
+        st.download_button(label=t["download_ex"], data=output.getvalue(), file_name=f'finance_report_{username}.xlsx')
+        
         st.subheader(t["history_title"])
         st.dataframe(df, use_container_width=True)
     else:
-        st.info("ابدأ بتسجيل أول مصروف من القائمة الجانبية لتظهر لك الرسوم البيانية 📊")
+        st.info("سجل بياناتك لتظهر التقارير")
 
     if st.sidebar.button(t["clear_btn"]):
         c.execute("DELETE FROM expenses WHERE username = ?", (username,))
