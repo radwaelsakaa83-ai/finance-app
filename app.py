@@ -5,9 +5,10 @@ from datetime import datetime
 import random
 import plotly.express as px
 import hashlib
+import os
 
 # 1. إعدادات الصفحة
-st.set_page_config(page_title="AI Finance System", layout="wide", page_icon="👥")
+st.set_page_config(page_title="Smart Hassala - سمارت حصالة", layout="wide", page_icon="💰")
 
 # --- إدارة قاعدة البيانات ---
 conn = sqlite3.connect('finance_pro.db', check_same_thread=False)
@@ -28,12 +29,18 @@ def make_hashes(password):
 
 def check_hashes(password, hashed_text):
     if make_hashes(password) == hashed_text:
-        return hashed_text
+        return hashlib.sha256(str.encode(password)).hexdigest() == hashed_text
     return False
 
 # --- واجهة تسجيل الدخول وإنشاء الحساب ---
 def auth_page():
-    st.title("🔐 نظام إدارة الميزانية الذكي")
+    # عرض اللوجو الجديد في المنتصف ليملأ الواجهة
+    if os.path.exists("logo.jpg"):
+        st.image("logo.jpg", use_container_width=True)
+    else:
+        st.info("يرجى التأكد من تسمية الصورة logo.jpg ووضعها في مجلد المشروع")
+            
+    st.markdown("<h2 style='text-align: center;'>🔐 نظام إدارة الميزانية الذكي</h2>", unsafe_allow_html=True)
     st.markdown("---")
 
     choice = st.sidebar.selectbox("القائمة | Menu", ["تسجيل الدخول", "إنشاء حساب جديد"])
@@ -68,6 +75,11 @@ def auth_page():
 
 # --- التطبيق الرئيسي ---
 def main_app(username):
+    # إضافة اللوجو في الـ Sidebar
+    if os.path.exists("logo.jpg"):
+        st.sidebar.image("logo.jpg", use_container_width=True)
+        st.sidebar.markdown("---")
+        
     st.sidebar.write(f"👤 المستخدم: **{username}**")
     if st.sidebar.button("تسجيل خروج | Logout"):
         st.session_state['logged_in'] = False
@@ -92,7 +104,7 @@ def main_app(username):
             "clear_btn": "🗑️ مسح كل السجل",
             "success_msg": "تم الحفظ! 🎉",
             "cats": ["طعام 🍔", "تسوق 🛍️", "سكن 🏠", "فواتير 📑", "ترفيه 🎮", "أخرى ✨"],
-            "ai_msgs": ["يا بطل، الميزانية بتصوت!", "😱 المصاريف كسبت!", "ارحمني من الشوبينج!"]
+            "ai_msgs": ["يا بطل، الميزانية بتصوت!", "😱 المصاريف كسبت!", "ارحمني من المصاريف دي شوية! 💸"]
         },
         "English": {
             "title": f"💰 {username}'s Budget",
@@ -109,7 +121,7 @@ def main_app(username):
             "clear_btn": "🗑️ Clear History",
             "success_msg": "Saved Successfully! 🎉",
             "cats": ["Food 🍔", "Shopping 🛍️", "Bills 📑", "Gaming 🎮", "Others ✨"],
-            "ai_msgs": ["Budget is screaming!", "Expenses won 1-0!", "Stop shopping!"]
+            "ai_msgs": ["Budget is screaming!", "Expenses won 1-0!", "Have mercy on these expenses! 💸"]
         }
     }
     t = texts[lang]
@@ -121,30 +133,38 @@ def main_app(username):
 
     if st.sidebar.button(t["save_btn"]):
         if amount > 0:
-            c.execute('INSERT INTO expenses VALUES (?,?,?,?)', (username, amount, category, datetime.now().strftime("%Y-%m-%d")))
+            c.execute('INSERT INTO expenses (username, amount, category, date) VALUES (?,?,?,?)', 
+                      (username, amount, category, datetime.now().strftime("%Y-%m-%d")))
             conn.commit()
             st.sidebar.success(t["success_msg"])
             st.balloons()
             st.rerun()
 
-    df = pd.read_sql_query("SELECT * FROM expenses WHERE username = ?", conn, params=(username,))
+    # جلب البيانات
+    df = pd.read_sql_query("SELECT amount, category, date FROM expenses WHERE username = ?", conn, params=(username,))
     total_spent = df['amount'].sum()
     remaining = income - total_spent
 
+    # عرض الأرقام الرئيسية
     col1, col2, col3 = st.columns(3)
     col1.metric(t["total_income"], f"{income:,.0f}")
     col2.metric(t["total_spent"], f"{total_spent:,.0f}")
     col3.metric(t["remaining"], f"{remaining:,.0f}")
 
+    # عرض الرسم البياني والتحذير الذكي
     if not df.empty:
         st.subheader(t["chart_title"])
         fig = px.pie(df, values='amount', names='category', hole=0.4)
         st.plotly_chart(fig, use_container_width=True)
+        
+        # تحذير الـ AI يظهر إذا زادت المصاريف عن 50% من الدخل
         if total_spent > (income * 0.5):
-            st.warning(random.choice(t["ai_msgs"]))
+            st.warning(f"{t['ai_title']}: {random.choice(t['ai_msgs'])}")
 
-    st.subheader(t["history_title"])
-    st.dataframe(df, use_container_width=True)
+        st.subheader(t["history_title"])
+        st.dataframe(df, use_container_width=True)
+    else:
+        st.info("ابدأ بتسجيل أول مصروف من القائمة الجانبية لتظهر لك الرسوم البيانية 📊")
 
     if st.sidebar.button(t["clear_btn"]):
         c.execute("DELETE FROM expenses WHERE username = ?", (username,))
