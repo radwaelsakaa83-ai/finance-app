@@ -4,117 +4,128 @@ import sqlite3
 from datetime import datetime
 import random
 import plotly.express as px
+import hashlib
 
 # 1. إعدادات الصفحة
-st.set_page_config(page_title="AI Finance Master", layout="wide", page_icon="💰")
+st.set_page_config(page_title="AI Finance System", layout="wide", page_icon="👥")
 
-# 2. إضافة خاصية اختيار اللغة في السايد بار
-lang = st.sidebar.radio("🌐 Choose Language / اختر اللغة", ("العربية", "English"))
-
-# قاموس الترجمة
-texts = {
-    "العربية": {
-        "title": "💰 مساعد الميزانية الذكي (AI)",
-        "income_label": "الدخل الشهري الحالي",
-        "amount_label": "المبلغ (Amount)",
-        "cat_label": "الفئة (Category)",
-        "date_label": "تاريخ العملية",
-        "save_btn": "حفظ العملية",
-        "total_income": "إجمالي الدخل",
-        "total_spent": "إجمالي المصاريف",
-        "remaining": "المتبقي",
-        "chart_title": "📊 تحليل المصاريف حسب الفئة",
-        "ai_title": "🔮 نصيحة المساعد الذكي",
-        "history_title": "📜 سجل العمليات",
-        "clear_btn": "🗑️ مسح كل السجل",
-        "success_msg": "تم الحفظ بنجاح! 🎉",
-        "cats": ["طعام 🍔", "تسوق 🛍️", "فواتير 📑", "ترفيه 🎮", "أخرى ✨"],
-        "ai_msgs": [
-            "يا بطل، الميزانية بتصوت! 📢 إحنا كدة عدينا نص الدخل..",
-            "إيه ده! 😱 المصاريف كسبت الدخل 1-0! محتاجين تدخّل سريع.",
-            "الميزانية بتقولك 'ارحمني'.. بلاش شوبينج النهاردة."
-        ]
-    },
-    "English": {
-        "title": "💰 AI Finance Master",
-        "income_label": "Current Monthly Income",
-        "amount_label": "Amount",
-        "cat_label": "Category",
-        "date_label": "Transaction Date",
-        "save_btn": "Save Transaction",
-        "total_income": "Total Income",
-        "total_spent": "Total Spent",
-        "remaining": "Remaining",
-        "chart_title": "📊 Expense Analysis by Category",
-        "ai_title": "🔮 AI Assistant Advice",
-        "history_title": "📜 Transaction History",
-        "clear_btn": "🗑️ Clear All History",
-        "success_msg": "Saved Successfully! 🎉",
-        "cats": ["Food 🍔", "Shopping 🛍️", "Bills 📑", "Gaming 🎮", "Others ✨"],
-        "ai_msgs": [
-            "Hey champ, the budget is screaming! 📢 You spent half your income..",
-            "Oops! 😱 Expenses beat Income 1-0! Need urgent intervention.",
-            "The budget says 'Mercy please'.. stop shopping for today."
-        ]
-    }
-}
-
-t = texts[lang]
-
-# 3. الربط بقاعدة البيانات
+# --- إدارة قاعدة البيانات ---
 conn = sqlite3.connect('finance_pro.db', check_same_thread=False)
 c = conn.cursor()
-c.execute('CREATE TABLE IF NOT EXISTS expenses (amount REAL, category TEXT, date TEXT)')
+
+# إنشاء الجداول لو مش موجودة
+c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
+c.execute('CREATE TABLE IF NOT EXISTS expenses (username TEXT, amount REAL, category TEXT, date TEXT)')
 conn.commit()
 
-st.title(t["title"])
+# دالة لتشفير الباسورد (عشان الأمان)
+def make_hashes(password):
+    return hashlib.sha256(str.encode(password)).hexdigest()
 
-# 4. السايد بار
-st.sidebar.header("📝" if lang == "العربية" else "📝 Entry")
-income = st.sidebar.number_input(t["income_label"], min_value=1.0, value=15000.0)
-amount = st.sidebar.number_input(t["amount_label"], min_value=0.0, value=0.0)
-category = st.sidebar.selectbox(t["cat_label"], t["cats"])
-expense_date = st.sidebar.date_input(t["date_label"], datetime.now())
+def check_hashes(password, hashed_text):
+    if make_hashes(password) == hashed_text:
+        return hashed_text
+    return False
 
-if st.sidebar.button(t["save_btn"]):
-    if amount > 0:
-        c.execute('INSERT INTO expenses (amount, category, date) VALUES (?, ?, ?)', 
-                  (amount, category, expense_date.strftime("%Y-%m-%d")))
-        conn.commit()
-        st.sidebar.success(t["success_msg"])
-        st.balloons()
+# --- واجهة تسجيل الدخول وإنشاء الحساب ---
+def auth_page():
+    st.title("🔐 نظام إدارة الميزانية الذكي")
+    choice = st.sidebar.selectbox("القائمة | Menu", ["تسجيل الدخول", "إنشاء حساب جديد"])
+
+    if choice == "تسجيل الدخول":
+        st.subheader("تسجيل الدخول")
+        username = st.text_input("اسم المستخدم")
+        password = st.text_input("كلمة المرور", type='password')
+        if st.button("دخول"):
+            c.execute('SELECT * FROM users WHERE username = ?', (username,))
+            user_data = c.fetchone()
+            if user_data and check_hashes(password, user_data[1]):
+                st.session_state['logged_in'] = True
+                st.session_state['user'] = username
+                st.success(f"مرحباً بك يا {username}")
+                st.rerun()
+            else:
+                st.error("خطأ في الاسم أو الباسورد")
+
+    elif choice == "إنشاء حساب جديد":
+        st.subheader("عمل حساب جديد")
+        new_user = st.text_input("اختر اسم مستخدم")
+        new_password = st.text_input("اختر كلمة مرور", type='password')
+        if st.button("تسجيل"):
+            if new_user and new_password:
+                try:
+                    c.execute('INSERT INTO users VALUES (?,?)', (new_user, make_hashes(new_password)))
+                    conn.commit()
+                    st.success("تم إنشاء الحساب بنجاح! اذهب لتسجيل الدخول")
+                except:
+                    st.warning("الاسم ده موجود قبل كدة، اختار اسم تاني")
+
+# --- التطبيق الرئيسي ---
+def main_app(username):
+    st.sidebar.write(f"👤 المستخدم الحالي: **{username}**")
+    if st.sidebar.button("تسجيل خروج"):
+        st.session_state['logged_in'] = False
         st.rerun()
 
-# 5. معالجة البيانات وعرض الملخص
-df = pd.read_sql_query("SELECT * FROM expenses", conn)
-total_spent = df['amount'].sum()
-remaining = income - total_spent
+    lang = st.sidebar.radio("🌐 Language", ("العربية", "English"))
+    
+    # نصوص اللغات (نفس اللي عملناها)
+    texts = {
+        "العربية": {
+            "title": f"💰 ميزانية {username}",
+            "income_label": "دخل الشخصي",
+            "amount_label": "المبلغ",
+            "cat_label": "الفئة",
+            "save_btn": "حفظ",
+            "chart_title": "📊 تحليلاتك الشخصية",
+            "ai_msgs": ["عديت النص! 😱", "ميزانيتك بتصوت 📢"]
+        },
+        "English": {
+            "title": f"💰 {username}'s Budget",
+            "income_label": "Monthly Income",
+            "amount_label": "Amount",
+            "cat_label": "Category",
+            "save_btn": "Save",
+            "chart_title": "📊 Your Analysis",
+            "ai_msgs": ["Half gone! 😱", "Budget is screaming! 📢"]
+        }
+    }
+    t = texts[lang]
+    st.title(t["title"])
 
-col1, col2, col3 = st.columns(3)
-col1.metric(t["total_income"], f"{income:,.0f}")
-col2.metric(t["total_spent"], f"{total_spent:,.0f}")
-col3.metric(t["remaining"], f"{remaining:,.0f}")
+    # مدخلات البيانات (بتربط باليوزر نيم)
+    income = st.sidebar.number_input(t["income_label"], min_value=1.0, value=10000.0)
+    amount = st.sidebar.number_input(t["amount_label"], min_value=0.0)
+    category = st.sidebar.selectbox(t["cat_label"], ["طعام 🍔", "تسوق 🛍️", "فواتير 📑", "ترفيه 🎮", "أخرى ✨"])
+    
+    if st.sidebar.button(t["save_btn"]):
+        if amount > 0:
+            c.execute('INSERT INTO expenses VALUES (?,?,?,?)', (username, amount, category, datetime.now().strftime("%Y-%m-%d")))
+            conn.commit()
+            st.balloons()
+            st.rerun()
 
-# 6. الرسم البياني
-st.write("---")
-if not df.empty:
-    st.subheader(t["chart_title"])
-    fig = px.pie(df, values='amount', names='category', hole=0.5)
-    st.plotly_chart(fig, use_container_width=True)
+    # استعراض بيانات "هذا المستخدم فقط"
+    df = pd.read_sql_query("SELECT * FROM expenses WHERE username = ?", conn, params=(username,))
+    
+    total_spent = df['amount'].sum()
+    col1, col2 = st.columns(2)
+    col1.metric("صرفت كام", f"{total_spent:,.0f}")
+    col2.metric("باقي كام", f"{income - total_spent:,.0f}")
 
-# 7. ذكاء الـ AI
-st.subheader(t["ai_title"])
-if total_spent > (income * 0.5):
-    st.warning(random.choice(t["ai_msgs"]))
+    if not df.empty:
+        st.subheader(t["chart_title"])
+        fig = px.pie(df, values='amount', names='category', hole=0.4)
+        st.plotly_chart(fig)
+        
+        if total_spent > (income * 0.5):
+            st.warning(random.choice(t["ai_msgs"]))
+
+# --- التحكم في الدخول ---
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
+
+if not st.session_state['logged_in']:
+    auth_page()
 else:
-    st.success("✅ Your budget is stable!" if lang == "English" else "✅ ميزانيتك مستقرة!")
-
-# 8. السجل
-st.write("---")
-st.subheader(t["history_title"])
-st.dataframe(df, use_container_width=True)
-
-if st.sidebar.button(t["clear_btn"]):
-    c.execute("DELETE FROM expenses")
-    conn.commit()
-    st.rerun()
+    main_app(st.session_state['user'])
